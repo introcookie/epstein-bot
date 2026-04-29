@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Epstein Clicker</title>
+    <style>
+        body { background:#111; color:#fff; font-family:Arial,sans-serif; margin:0; padding:20px; display:flex; flex-direction:column; align-items:center; height:100vh; }
+        #balance { font-size:2.4rem; font-weight:bold; margin:15px; text-shadow:0 0 12px #fc0; }
+        .circle {
+            width:180px; height:180px; border-radius:50%;
+            background:url('https://upload.wikimedia.org/wikipedia/commons/7/7d/Jeffrey_Epstein%2C_27_%28cropped%29.jpg') center/cover;
+            border:4px solid #fc0; box-shadow:0 0 35px #fc0; cursor:pointer; transition:0.1s;
+            -webkit-tap-highlight-color:transparent;
+        }
+        .circle:active { transform:scale(0.9); }
+        .menu { display:flex; gap:10px; margin:20px 0; flex-wrap:wrap; justify-content:center; }
+        .btn { background:#333; color:#fff; padding:8px 18px; border-radius:20px; border:none; font-size:1rem; cursor:pointer; }
+        .btn.active { background:#fc0; color:#000; }
+        .section { display:none; width:100%; max-width:400px; }
+        .section.active { display:block; }
+        .shop-item { background:#222; padding:14px; margin:10px 0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
+        .top-list { list-style:none; padding:0; }
+        .top-list li { background:#1a1a1a; padding:10px; margin:6px 0; border-radius:8px; display:flex; justify-content:space-between; }
+    </style>
+</head>
+<body>
+    <div id="balance">0 Epstein Coins</div>
+    <div class="circle" id="clicker"></div>
+
+    <div class="menu">
+        <button class="btn active" data-tab="clicker-tab">Кликер</button>
+        <button class="btn" data-tab="shop-tab">Магазин</button>
+        <button class="btn" data-tab="top-tab">Топ</button>
+    </div>
+
+    <div id="clicker-tab" class="section active"></div>
+
+    <div id="shop-tab" class="section">
+        <button class="btn" id="dailyBtn" style="width:100%; margin-bottom:10px;">🎁 Ежедневный бонус</button>
+        <div class="shop-item">
+            <span>x2 клики (30с) - 100 монет</span>
+            <button class="btn buy-btn" data-cost="100" data-boost="x2">Купить</button>
+        </div>
+        <div class="shop-item">
+            <span>+5 к клику (60с) - 200 монет</span>
+            <button class="btn buy-btn" data-cost="200" data-boost="add5">Купить</button>
+        </div>
+    </div>
+
+    <div id="top-tab" class="section">
+        <h3>🏆 Топ игроков</h3>
+        <ul class="top-list" id="topList"></ul>
+    </div>
+
+    <script>
+        const tg = window.Telegram?.WebApp;
+        const user_id = tg?.initDataUnsafe?.user?.id || 0;
+        let balance = 0;
+        let multiplier = 1;
+        let boostEnd = 0;
+
+        const balanceEl = document.getElementById('balance');
+        const clicker = document.getElementById('clicker');
+        const tabs = document.querySelectorAll('.btn');
+        const sections = document.querySelectorAll('.section');
+        const topList = document.getElementById('topList');
+        const dailyBtn = document.getElementById('dailyBtn');
+
+        const API = '/api';
+
+        // переключение табов
+        tabs.forEach(b => b.addEventListener('click', () => {
+            tabs.forEach(tb => tb.classList.remove('active'));
+            b.classList.add('active');
+            sections.forEach(sec => sec.classList.remove('active'));
+            document.getElementById(b.dataset.tab).classList.add('active');
+            if(b.dataset.tab === 'top-tab') loadTop();
+        }));
+
+        // загрузка баланса с сервера
+        async function loadData() {
+            if(!user_id) return;
+            const res = await fetch(`${API}/balance?user_id=${user_id}`);
+            const data = await res.json();
+            balance = data.balance;
+            updateUI();
+        }
+
+        function updateUI() {
+            balanceEl.textContent = balance + ' Epstein Coins';
+        }
+
+        // кликер
+        let buffer = 0;
+        clicker.addEventListener('click', () => {
+            let add = multiplier === 'add5' ? 5 : 1 * (multiplier === 'x2' ? 2 : 1);
+            balance += add;
+            buffer += add;
+            updateUI();
+        });
+
+        // автоотправка каждые 5 секунд
+        setInterval(async () => {
+            if(buffer > 0 && user_id) {
+                await fetch(`${API}/click`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ user_id, count: buffer })
+                });
+                buffer = 0;
+            }
+        }, 5000);
+
+        // магазин
+        document.querySelectorAll('.buy-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const cost = parseInt(btn.dataset.cost);
+                const boost = btn.dataset.boost;
+                const res = await fetch(`${API}/buy_booster`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ user_id, cost })
+                });
+                const data = await res.json();
+                if(data.success) {
+                    balance = data.balance;
+                    updateUI();
+                    // активация бустера
+                    if(boost === 'x2') {
+                        multiplier = 'x2';
+                        boostEnd = Date.now() + 30000;
+                    } else if(boost === 'add5') {
+                        multiplier = 'add5';
+                        boostEnd = Date.now() + 60000;
+                    }
+                    setTimeout(() => {
+                        multiplier = 1;
+                        alert('Бустер закончился');
+                    }, boost === 'x2' ? 30000 : 60000);
+                } else {
+                    alert(data.message);
+                }
+            });
+        });
+
+        // ежедневный бонус
+        dailyBtn.addEventListener('click', async () => {
+            const res = await fetch(`${API}/daily`, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ user_id })
+            });
+            const data = await res.json();
+            if(data.success) {
+                balance = data.balance;
+                updateUI();
+                alert(`Получено +${data.bonus} монет!`);
+            } else {
+                alert(data.message);
+            }
+        });
+
+        // топ
+        async function loadTop() {
+            const res = await fetch(`${API}/top`);
+            const top = await res.json();
+            topList.innerHTML = top.map((item, i) =>
+                `<li><span>#${i+1} ${item.username}</span><span>${item.balance}</span></li>`
+            ).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
