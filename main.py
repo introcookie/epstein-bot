@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os, asyncio, sqlite3, json
 from datetime import datetime, date
 
@@ -11,11 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import uvicorn
 
-# ---------- конфиг ----------
 TOKEN = os.getenv("TOKEN")
 APP_URL = os.getenv("APP_URL", "http://localhost:8000")
 
-# ---------- база данных ----------
 DB = "epstein.db"
 
 def init_db():
@@ -35,7 +32,6 @@ def get_user(user_id: int):
         row = conn.execute("SELECT balance, last_daily FROM users WHERE user_id=?", (user_id,)).fetchone()
         if row:
             return {"balance": row[0], "last_daily": row[1]}
-        # создаём нового
         conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
         conn.commit()
         return {"balance": 0, "last_daily": "2000-01-01"}
@@ -61,7 +57,6 @@ def get_top(limit=10):
         rows = conn.execute("SELECT user_id, username, balance FROM users ORDER BY balance DESC LIMIT ?", (limit,)).fetchall()
         return [{"user_id": r[0], "username": r[1] or str(r[0]), "balance": r[2]} for r in rows]
 
-# ---------- бот ----------
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -79,13 +74,14 @@ async def start(msg: types.Message):
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=f"{APP_URL}/static/index.html"))]
     ])
-    await msg.answer("Давай, жми Эпштейна!", reply_markup=kb)
+    await msg.answer(
+        "Привет! Ты попал на остров Эпштейна. Скорее кликай кнопку! 🔥",
+        reply_markup=kb
+    )
 
-# ---------- FastAPI ----------
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Эндпоинты для игры
 @app.get("/api/balance")
 async def api_balance(user_id: int):
     ud = get_user(user_id)
@@ -101,8 +97,7 @@ async def api_click(req: Request):
 
 @app.get("/api/top")
 async def api_top():
-    top = get_top()
-    return top
+    return get_top()
 
 @app.post("/api/buy_booster")
 async def api_buy(req: Request):
@@ -122,13 +117,11 @@ async def api_daily(req: Request):
     user = get_user(user_id)
     today = date.today().isoformat()
     if user["last_daily"] == today:
-        return {"success": False, "message": "Сегодня уже забирал"}
-    # начисляем 50 монет
+        return {"success": False, "message": "Сегодня уже забирал, бро"}
     set_last_daily(user_id, today)
     new_balance = update_balance(user_id, 50)
     return {"success": True, "balance": new_balance, "bonus": 50}
 
-# фоновый запуск бота
 async def run_bot():
     await dp.start_polling(bot)
 
