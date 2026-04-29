@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import uvicorn
 
-TOKEN = os.getenv("TOKEN")
-APP_URL = os.getenv("APP_URL", "http://localhost:8000")
+# ---------- КОНФИГ (вшито) ----------
+TOKEN = "8656839032:AAETcA3tgSxzaJccaAuKVsL1MXxqfO5VNks"
+APP_URL = "https://introcookie.github.io/epstein-bot"
 
+# ---------- БАЗА ----------
 DB = "epstein.db"
 
 def init_db():
@@ -57,6 +59,7 @@ def get_top(limit=10):
         rows = conn.execute("SELECT user_id, username, balance FROM users ORDER BY balance DESC LIMIT ?", (limit,)).fetchall()
         return [{"user_id": r[0], "username": r[1] or str(r[0]), "balance": r[2]} for r in rows]
 
+# ---------- БОТ ----------
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -79,15 +82,16 @@ async def start(msg: types.Message):
         reply_markup=kb
     )
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ---------- FASTAPI ----------
+app_fastapi = FastAPI()
+# Статику не монтируем, она на GitHub Pages
 
-@app.get("/api/balance")
+@app_fastapi.get("/api/balance")
 async def api_balance(user_id: int):
     ud = get_user(user_id)
     return {"balance": ud["balance"], "last_daily": ud["last_daily"]}
 
-@app.post("/api/click")
+@app_fastapi.post("/api/click")
 async def api_click(req: Request):
     data = await req.json()
     user_id = data["user_id"]
@@ -95,11 +99,11 @@ async def api_click(req: Request):
     balance = update_balance(user_id, count)
     return {"balance": balance}
 
-@app.get("/api/top")
+@app_fastapi.get("/api/top")
 async def api_top():
     return get_top()
 
-@app.post("/api/buy_booster")
+@app_fastapi.post("/api/buy_booster")
 async def api_buy(req: Request):
     data = await req.json()
     user_id = data["user_id"]
@@ -110,7 +114,7 @@ async def api_buy(req: Request):
     new_balance = update_balance(user_id, -cost)
     return {"success": True, "balance": new_balance}
 
-@app.post("/api/daily")
+@app_fastapi.post("/api/daily")
 async def api_daily(req: Request):
     data = await req.json()
     user_id = data["user_id"]
@@ -125,9 +129,10 @@ async def api_daily(req: Request):
 async def run_bot():
     await dp.start_polling(bot)
 
-@app.on_event("startup")
+@app_fastapi.on_event("startup")
 async def on_startup():
     asyncio.create_task(run_bot())
 
+# ---------- ЗАПУСК ----------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app_fastapi, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
